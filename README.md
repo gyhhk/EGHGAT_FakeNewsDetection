@@ -36,18 +36,3 @@ matplotlib
 scikit_learn
 xlrd (pip install xlrd)
 ```
-
-# Run
-
-Train and test,
-
-```
-python main.py --mode 0
-```
-
-Test,
-
-```
-python main.py --mode 1 --model_file MODELNAME
-```
-
