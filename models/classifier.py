@@ -6,9 +6,6 @@ import torch.nn.functional as F
 
 from models.model import GHGAT, TextEncoder, EntityEncoder, Pooling, MatchingTransform
 
-
-# from graph_self_attention import GRPENetwork
-
 class Classifier(nn.Module):
     def __init__(self, params, vocab_size, pte=None):
         super(Classifier, self).__init__()
