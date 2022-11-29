@@ -45,7 +45,7 @@ def parse_arguments():
                         default=data_root_path + 'entityDescCorpus.pkl')
     parser.add_argument("--entity_tran", type=str, help='entity transE embedding path.',
                         default=data_root_path + 'entity_feature_transE.pkl')
-    parser.add_argument("--adjs", type=str, default=data_root_path)
+    parser.add_argument("--adjs", type=str, default=data_root_path + 'adjs/')
     # Hyper-parameters
     parser.add_argument("--emb_dim", type=int, default=100)
     parser.add_argument("--hidden_dim", type=int, default=100)
