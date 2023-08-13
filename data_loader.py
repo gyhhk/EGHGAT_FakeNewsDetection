@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 ASYMMETRIC = True
-DEBUG_NUM = 2500
+DEBUG_NUM = 3000
 W2I = None
 
 
@@ -323,65 +323,182 @@ class DataSet(torch.utils.data.TensorDataset):
         doc_lens = torch.from_numpy(np.array(doc_lens)).int()
         ent_lens = torch.from_numpy(np.array(ent_lens)).int()
 
+        distance = None
         if self.params.node_type == 3:
             new_adjs = [new_adjs[0:3], new_adjs[3:6], new_adjs[6:9]]
             new_adjs[0][1].zero_()  # (√)text -> entity   (X)entity -> text
+            merge_adj_value = -torch.ones(
+                (
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1] + new_adjs[0][2].shape[1],
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1] + new_adjs[0][2].shape[1],
+                ),
+                dtype=new_adjs[0][0].dtype,
+                device=new_adjs[0][0].device,
+            )
+            bias = [0, new_adjs[0][0].shape[1], new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1],
+                    merge_adj_value[0].shape[0]]
+            for i in [0, 1, 2]:
+                for j in [0, 1, 2]:
+                    des = new_adjs[i][j].to_dense()
+                    merge_adj_value[bias[i]:bias[i + 1], bias[j]:bias[j + 1]] = des
+            merge_adj = torch.ones(
+                (
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1] + new_adjs[0][2].shape[1],
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1] + new_adjs[0][2].shape[1],
+                ),
+                dtype=torch.int64,
+                device=new_adjs[0][0].device,
+            )
+            zeros_adj = torch.zeros(
+                (
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1] + new_adjs[0][2].shape[1],
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1] + new_adjs[0][2].shape[1],
+                ),
+                dtype=torch.int64,
+                device=new_adjs[0][0].device,
+            )
+            merge_adj = torch.where(merge_adj_value > 0, merge_adj, zeros_adj)
+            adj_sp = scipy.sparse.csr_matrix(merge_adj)
+            all_dist_matrix, _ = shortest_path(
+                csgraph=adj_sp, directed=True, return_predecessors=True
+            )
+            all_distance = torch.from_numpy(all_dist_matrix).long()
+            distance = all_distance.clamp(
+                max=self.params.max_distance
+            )
         elif self.params.node_type == 2:  # Document&Entiy
             new_adjs = [new_adjs[0:2], new_adjs[3:5]]
             new_feas = new_feas[0: 2]
             new_adjs[0][1].zero_()
+            merge_adj_value = -torch.ones(
+                (
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1],
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1],
+                ),
+                dtype=new_adjs[0][0].dtype,
+                device=new_adjs[0][0].device,
+            )
+            bias = [0, new_adjs[0][0].shape[1], new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1]]
+            for i in [0, 1]:
+                for j in [0, 1]:
+                    des = new_adjs[i][j].to_dense()
+                    merge_adj_value[bias[i]:bias[i + 1], bias[j]:bias[j + 1]] = des
+            merge_adj = torch.ones(
+                (
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1],
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1],
+                ),
+                dtype=torch.int64,
+                device=new_adjs[0][0].device,
+            )
+            zeros_adj = torch.zeros(
+                (
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1],
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1],
+                ),
+                dtype=torch.int64,
+                device=new_adjs[0][0].device,
+            )
+            merge_adj = torch.where(merge_adj_value > 0, merge_adj, zeros_adj)
+            adj_sp = scipy.sparse.csr_matrix(merge_adj)
+            all_dist_matrix, _ = shortest_path(
+                csgraph=adj_sp, directed=True, return_predecessors=True
+            )
+            all_distance = torch.from_numpy(all_dist_matrix).long()
+            distance = all_distance.clamp(
+                max=self.params.max_distance
+            )
+
         elif self.params.node_type == 1:  # Document&Topic
             new_adjs = [[new_adjs[0], new_adjs[2]], [new_adjs[6], new_adjs[8]]]
             new_feas = [new_feas[0], new_feas[2]]
             ent_desc, ent_lens, entiPerDoc = None, None, None
+
+            merge_adj_value = -torch.ones(
+                (
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1],
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1],
+                ),
+                dtype=new_adjs[0][0].dtype,
+                device=new_adjs[0][0].device,
+            )
+            bias = [0, new_adjs[0][0].shape[1], new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1]]
+            for i in [0, 1]:
+                for j in [0, 1]:
+                    des = new_adjs[i][j].to_dense()
+                    merge_adj_value[bias[i]:bias[i + 1], bias[j]:bias[j + 1]] = des
+            merge_adj = torch.ones(
+                (
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1],
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1],
+                ),
+                dtype=torch.int64,
+                device=new_adjs[0][0].device,
+            )
+            zeros_adj = torch.zeros(
+                (
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1],
+                    new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1],
+                ),
+                dtype=torch.int64,
+                device=new_adjs[0][0].device,
+            )
+            merge_adj = torch.where(merge_adj_value > 0, merge_adj, zeros_adj)
+            adj_sp = scipy.sparse.csr_matrix(merge_adj)
+            all_dist_matrix, _ = shortest_path(
+                csgraph=adj_sp, directed=True, return_predecessors=True
+            )
+            all_distance = torch.from_numpy(all_dist_matrix).long()
+            distance = all_distance.clamp(
+                max=self.params.max_distance
+            )
         elif self.params.node_type == 0:
             new_adjs = [[new_adjs[0]]]
             new_feas = [new_feas[0]]
             ent_desc, ent_lens, entiPerDoc = None, None, None
+
+            merge_adj_value = -torch.ones(
+                (
+                    new_adjs[0][0].shape[1],
+                    new_adjs[0][0].shape[1],
+                ),
+                dtype=new_adjs[0][0].dtype,
+                device=new_adjs[0][0].device,
+            )
+            bias = [0, new_adjs[0][0].shape[1]]
+            for i in [0,]:
+                for j in [0]:
+                    des = new_adjs[i][j].to_dense()
+                    merge_adj_value[bias[i]:bias[i + 1], bias[j]:bias[j + 1]] = des
+            merge_adj = torch.ones(
+                (
+                    new_adjs[0][0].shape[1],
+                    new_adjs[0][0].shape[1],
+                ),
+                dtype=torch.int64,
+                device=new_adjs[0][0].device,
+            )
+            zeros_adj = torch.zeros(
+                (
+                    new_adjs[0][0].shape[1],
+                    new_adjs[0][0].shape[1],
+                ),
+                dtype=torch.int64,
+                device=new_adjs[0][0].device,
+            )
+            merge_adj = torch.where(merge_adj_value > 0, merge_adj, zeros_adj)
+            adj_sp = scipy.sparse.csr_matrix(merge_adj)
+            all_dist_matrix, _ = shortest_path(
+                csgraph=adj_sp, directed=True, return_predecessors=True
+            )
+            all_distance = torch.from_numpy(all_dist_matrix).long()
+            distance = all_distance.clamp(
+                max=self.params.max_distance
+            )
         else:
             raise Exception("Unknown node_type.")
 
-        merge_adj_value = -torch.ones(
-            (
-                new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1] + new_adjs[0][2].shape[1],
-                new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1] + new_adjs[0][2].shape[1],
-            ),
-            dtype=new_adjs[0][0].dtype,
-            device=new_adjs[0][0].device,
-        )
-        bias = [0, new_adjs[0][0].shape[1], new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1],
-                merge_adj_value[0].shape[0]]
-        for i in [0, 1, 2]:
-            for j in [0, 1, 2]:
-                des = new_adjs[i][j].to_dense()
-                merge_adj_value[bias[i]:bias[i + 1], bias[j]:bias[j + 1]] = des
-        merge_adj = torch.ones(
-            (
-                new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1] + new_adjs[0][2].shape[1],
-                new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1] + new_adjs[0][2].shape[1],
-            ),
-            dtype=torch.int64,
-            device=new_adjs[0][0].device,
-        )
-        zeros_adj = torch.zeros(
-            (
-                new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1] + new_adjs[0][2].shape[1],
-                new_adjs[0][0].shape[1] + new_adjs[0][1].shape[1] + new_adjs[0][2].shape[1],
-            ),
-            dtype=torch.int64,
-            device=new_adjs[0][0].device,
-        )
-        merge_adj = torch.where(merge_adj_value > 0, merge_adj, zeros_adj)
-        adj_sp = scipy.sparse.csr_matrix(merge_adj)
-        all_dist_matrix, _ = shortest_path(
-            csgraph=adj_sp, directed=True, return_predecessors=True
-        )
-        all_distance = torch.from_numpy(all_dist_matrix).long()
-        distance = all_distance.clamp(
-            max=self.params.max_distance
-        )
         return documents, ent_desc, doc_lens, ent_lens, labels, new_adjs, new_feas, sentPerDoc, entiPerDoc, distance
-
 
 def block_diag(mat_list: list or tuple):
     shape_list = [m.shape for m in mat_list]
@@ -403,7 +520,6 @@ class freezable_defaultdict(dict):
         self.default_factory = default_factory
         super(freezable_defaultdict, self).__init__(*args, **kwargs)
 
-    # missing()的主要作用就是由getitem在缺失 key 时调用，从而避免出现 KeyError。
     def __missing__(self, key):
         if self.frozen:
             return self.default_factory()
