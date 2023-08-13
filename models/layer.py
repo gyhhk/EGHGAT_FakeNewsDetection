@@ -1,5 +1,4 @@
 import math
-
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -94,7 +93,7 @@ class GraphAttentionConvolution(Module):
         for i in range(self.ntype):
             self.att_list.append(Attention_InfLevel(out_features, gamma))
 
-    def forward(self, inputs_list, adj_list, all_distance, global_W=None):
+    def forward(self, inputs_list, adj_list, all_distance=None, global_W=None):
         h = []
         for i in range(self.ntype):
             h.append(torch.spmm(inputs_list[i], self.weights[i]))
@@ -102,9 +101,14 @@ class GraphAttentionConvolution(Module):
             for i in range(self.ntype):
                 h[i] = (torch.spmm(h[i], global_W))
         outputs = []
-        dis_bias = [0, adj_list[0][0].shape[1], adj_list[0][0].shape[1] + adj_list[0][1].shape[1],
-                    adj_list[0][0].shape[1] + adj_list[0][1].shape[1] + adj_list[0][2].shape[1]]
-
+        dis_bias = []
+        if(self.ntype == 3):
+            dis_bias = [0, adj_list[0][0].shape[1], adj_list[0][0].shape[1] + adj_list[0][1].shape[1],
+                        adj_list[0][0].shape[1] + adj_list[0][1].shape[1] + adj_list[0][2].shape[1]]
+        elif(self.ntype == 1):
+            dis_bias = [0, adj_list[0][0].shape[1]]
+        else:
+            dis_bias = [0, adj_list[0][0].shape[1], adj_list[0][0].shape[1] + adj_list[0][1].shape[1]]
         for t1 in range(self.ntype):
             x_t1 = []
             for t2 in range(self.ntype):
@@ -140,7 +144,7 @@ class Attention_InfLevel(nn.Module):
         self.gamma = gamma
         self.dropout = nn.Dropout(0.1)
 
-    def forward(self, input1, input2, adj, distance):
+    def forward(self, input1, input2, adj, distance=None):
         h = input1
         g = input2
         N = h.size()[0]
